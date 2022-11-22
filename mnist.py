@@ -44,7 +44,7 @@ class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
         self.conv1 = SVConv2d(in_channels=1, out_channels=2, kernel_size=3, spatial_scalar_hint=(28, 28), stride=1, padding=(1,1), padding_mode='circular')
-        self.conv2 = SVConv2d(in_channels=2, out_channels=4, kernel_size=3, spatial_scalar_hint=(13, 13), stride=1, padding=(1,1), padding_mode='circular', groups=2)
+        self.conv2 = SVConv2d(in_channels=2, out_channels=4, kernel_size=3, spatial_scalar_hint=(14, 14), stride=1, padding=(1,1), padding_mode='circular')
         self.pool = nn.MaxPool2d(2, 2)
         # self.linear_relu_stack = nn.Sequential(
         #     nn.Linear(32 * 5 * 5, 10),
@@ -70,12 +70,12 @@ print("Number of trainable params: " + str(pytorch_total_params))
 
 learning_rate = 0.001
 batch_size = 64
-epochs = 25
+epochs = 3
 
 # Initialize the loss function
 loss_fn = nn.CrossEntropyLoss()
 
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -116,10 +116,19 @@ optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-epochs = 10
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimizer)
     test_loop(test_dataloader, model, loss_fn)
+
 print("Done!")
 
+
+import seaborn as sns
+import matplotlib.pylab as plt
+
+print(model.conv1.spatial_scalars)
+fig, axes = plt.subplots(1, 2)
+sns.heatmap(model.conv1.spatial_scalars[0,:,:].detach().numpy(), ax=axes[0])
+sns.heatmap(model.conv1.spatial_scalars[1,:,:].detach().numpy(), ax=axes[1])
+plt.show()

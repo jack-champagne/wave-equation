@@ -43,7 +43,7 @@ class _SVConvNd(_ConvNd):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(_SVConvNd, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation,
             False, _pair(0), groups, bias, padding_mode, **factory_kwargs)
-        self.spatial_scalars = Parameter(torch.empty(spatial_scalar_hint))
+        self.spatial_scalars = Parameter(torch.empty((out_channels,) + spatial_scalar_hint))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -53,7 +53,7 @@ class _SVConvNd(_ConvNd):
         init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         if hasattr(self, 'spatial_scalars'):
             bound = 1 ## TODO (jack): pls fix
-            init.uniform_(self.spatial_scalars, -bound, bound)
+            init.uniform_(self.spatial_scalars, bound, bound)
         if self.bias is not None:
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
             if fan_in != 0:
@@ -66,7 +66,7 @@ class SVConv1d(_SVConvNd):
     planes.
     In the simplest case, the output value of the layer with input size
     :math:`(N, C_{\text{in}}, L)` and output :math:`(N, C_{\text{out}}, L_{\text{out}})` can be
-    precisely described as:
+    precisely described as
     .. math::
         \text{out}(N_i, C_{\text{out}_j}) = \text{bias}(C_{\text{out}_j}) +
         \sum_{k = 0}^{C_{in} - 1} \text{scalar-variation(N_i, k)} \text{weight}(C_{\text{out}_j}, k)
@@ -279,7 +279,7 @@ class SVConv2d(_SVConvNd):
         dilation: _size_2_t = 1,
         groups: int = 1,
         bias: bool = True,
-        padding_mode: str = 'zeros',  # TODO: refine this type
+        padding_mode: str = 'zeros',
         device=None,
         dtype=None
     ) -> None:
@@ -294,12 +294,19 @@ class SVConv2d(_SVConvNd):
 
     def _conv_forward(self, input: Tensor, weight: Tensor, spatial_scalars: Tensor, bias: Optional[Tensor]):
         if self.padding_mode != 'zeros':
-            return F.conv2d(F.pad(input, self._reversed_padding_repeated_twice, mode=self.padding_mode),
-                            weight, bias, self.stride,
-                            _pair(0), self.dilation, self.groups)
+            ## Implementation here
+            output = torch.zeros((input.shape[0], self.out_channels) + self.spatial_scalars.shape[1:])
+            padded_input = F.pad(input, self._reversed_padding_repeated_twice, mode=self.padding_mode)
+            st = self.stride[0]
+            for chan in range(padded_input.shape[1]):
+                chout = F.conv2d(padded_input[:,chan:chan+1,:,:], weight[:,chan:chan+1,:,:], bias, self.stride, _pair(0), self.dilation, self.groups)
+                for sample in range(padded_input.shape[0]): ### TODO: remove
+                    output[sample,:,:,:] = torch.addcmul(output[sample,:,:,:], chout[sample,:,:,:], self.spatial_scalars)
+                output += chout
+            return output
+            
         return F.conv2d(input, weight, bias, self.stride,
                         self.padding, self.dilation, self.groups)
 
     def forward(self, input: Tensor) -> Tensor:
-        print(self.spatial_scalars)
         return self._conv_forward(input, self.weight, self.spatial_scalars, self.bias)
