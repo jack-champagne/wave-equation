@@ -43,7 +43,7 @@ class _SVConvNd(_ConvNd):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(_SVConvNd, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation,
             False, _pair(0), groups, bias, padding_mode, **factory_kwargs)
-        self.spatial_scalars = Parameter(torch.empty((out_channels,) + spatial_scalar_hint))
+        self.spatial_scalars = Parameter(torch.empty((in_channels, out_channels,) + spatial_scalar_hint))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -295,14 +295,16 @@ class SVConv2d(_SVConvNd):
     def _conv_forward(self, input: Tensor, weight: Tensor, spatial_scalars: Tensor, bias: Optional[Tensor]):
         if self.padding_mode != 'zeros':
             ## Implementation here
-            output = torch.zeros((input.shape[0], self.out_channels) + self.spatial_scalars.shape[1:])
+            output = torch.zeros((input.shape[0], self.out_channels) + self.spatial_scalars.shape[2:])
+            intermediate = torch.zeros((input.shape[0], self.in_channels, self.out_channels) + self.spatial_scalars.shape[2:])
             padded_input = F.pad(input, self._reversed_padding_repeated_twice, mode=self.padding_mode)
             st = self.stride[0]
-            for chan in range(padded_input.shape[1]):
-                chout = F.conv2d(padded_input[:,chan:chan+1,:,:], weight[:,chan:chan+1,:,:], bias, self.stride, _pair(0), self.dilation, self.groups)
-                for sample in range(padded_input.shape[0]): ### TODO: remove
-                    output[sample,:,:,:] = torch.addcmul(output[sample,:,:,:], chout[sample,:,:,:], self.spatial_scalars)
-                output += chout
+            for chan in range(self.in_channels):
+                for out_chan in range(self.out_channels):
+                    coout = F.conv2d(padded_input[:,chan:chan+1,:,:], weight[out_chan:out_chan+1,chan:chan+1,:,:], bias, self.stride, _pair(0), self.dilation, self.groups)
+                    intermediate[:,chan,out_chan,:,:] = torch.addcmul(intermediate[:,chan,out_chan,:,:], coout[:,0,:,:], self.spatial_scalars[chan,out_chan,:,:])
+                agg = torch.sum(intermediate, dim=1)
+                output += agg
             return output
             
         return F.conv2d(input, weight, bias, self.stride,

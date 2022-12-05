@@ -23,19 +23,6 @@ test_data = datasets.MNIST(
     transform=ToTensor()
 )
 
-labels_map = {
-    0: "T-Shirt",
-    1: "Trouser",
-    2: "Pullover",
-    3: "Dress",
-    4: "Coat",
-    5: "Sandal",
-    6: "Shirt",
-    7: "Sneaker",
-    8: "Bag",
-    9: "Ankle Boot",
-}
-
 ## Dataloaders
 train_dataloader = DataLoader(training_data, batch_size=64, shuffle=True)
 test_dataloader = DataLoader(test_data, batch_size=64, shuffle=True)
@@ -43,8 +30,11 @@ test_dataloader = DataLoader(test_data, batch_size=64, shuffle=True)
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
-        self.conv1 = SVConv2d(in_channels=1, out_channels=2, kernel_size=3, spatial_scalar_hint=(28, 28), stride=1, padding=(1,1), padding_mode='circular')
-        self.conv2 = SVConv2d(in_channels=2, out_channels=4, kernel_size=3, spatial_scalar_hint=(14, 14), stride=1, padding=(1,1), padding_mode='circular')
+        self.conv1 = SVConv2d(in_channels=1, out_channels=2, kernel_size=3, spatial_scalar_hint=(28, 28), stride=1, padding=(1,1), padding_mode='circular', bias=False)
+        self.conv2 = SVConv2d(in_channels=2, out_channels=4, kernel_size=3, spatial_scalar_hint=(14, 14), stride=1, padding=(1,1), padding_mode='circular', bias=False)
+        # self.conv1 = nn.Conv2d(in_channels=1, out_channels=2, kernel_size=3, stride=1, padding=(1,1), padding_mode='circular')
+        # self.conv2 = nn.Conv2d(in_channels=2, out_channels=4, kernel_size=3, stride=1, padding=(1,1), padding_mode='circular')
+        
         self.pool = nn.MaxPool2d(2, 2)
         # self.linear_relu_stack = nn.Sequential(
         #     nn.Linear(32 * 5 * 5, 10),
@@ -70,12 +60,12 @@ print("Number of trainable params: " + str(pytorch_total_params))
 
 learning_rate = 0.001
 batch_size = 64
-epochs = 3
+epochs = 1
 
 # Initialize the loss function
 loss_fn = nn.CrossEntropyLoss()
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -111,7 +101,7 @@ def test_loop(dataloader, model, loss_fn):
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+# optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -123,12 +113,17 @@ for t in range(epochs):
 
 print("Done!")
 
-
 import seaborn as sns
 import matplotlib.pylab as plt
 
 print(model.conv1.spatial_scalars)
 fig, axes = plt.subplots(1, 2)
-sns.heatmap(model.conv1.spatial_scalars[0,:,:].detach().numpy(), ax=axes[0])
-sns.heatmap(model.conv1.spatial_scalars[1,:,:].detach().numpy(), ax=axes[1])
+sns.heatmap(model.conv1.spatial_scalars[0,0,:,:].detach().numpy(), ax=axes[0])
+sns.heatmap(model.conv1.spatial_scalars[0,1,:,:].detach().numpy(), ax=axes[1])
+plt.show()
+
+fig, axes = plt.subplots(2, 4)
+for i in range(2):
+    for j in range(4):
+        sns.heatmap(model.conv2.spatial_scalars[i,j,:,:].detach().numpy(), ax=axes[i][j])
 plt.show()
